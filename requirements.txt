@@ -1,0 +1,15 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.3.0
+torchvision
+torchaudio
+fastapi
+uvicorn
+pydantic
+git+https://github.com/huggingface/diffusers.git
+transformers
+accelerate
+safetensors
+sentencepiece
+tiktoken
+psutil
+requests
