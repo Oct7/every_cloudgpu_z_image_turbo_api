@@ -12,3 +12,4 @@ sentencepiece
 tiktoken
 psutil
 requests
+nvidia-ml-py

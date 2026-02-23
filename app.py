@@ -12,6 +12,7 @@ import math
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from diffusers import ZImagePipeline
+import pynvml
 
 # 보안 설정: 환경 변수에서 API_KEY를 가져오며, 기본값은 임시로 지정 (배포 시 변경 권장)
 API_KEY = os.getenv("API_KEY", "your-secret-key-1234")
@@ -34,6 +35,15 @@ executor = ThreadPoolExecutor(max_workers=1)
 active_requests = 0
 
 @app.on_event("startup")
+def startup_event():
+    # pynvml 초기화
+    try:
+        pynvml.nvmlInit()
+        print("NVML initialized for GPU monitoring.")
+    except Exception as e:
+        print(f"Failed to initialize NVML: {e}")
+    load_model()
+
 def load_model():
     global pipe
     print("Checking CUDA availability...")
@@ -101,6 +111,62 @@ def get_status(api_key: str = Depends(get_api_key)):
         return {"status_code": 200, "status": "ready", "active_requests": 0}
     else:
         return {"status_code": 200, "status": "busy", "active_requests": active_requests}
+
+@app.get("/status/gpu")
+def get_gpu_status(api_key: str = Depends(get_api_key)):
+    """
+    GPU의 상세 하드웨어 상태(메모리, 온도, 사용률 등)를 반환합니다.
+    관리 및 모니터링 목적으로 사용됩니다.
+    """
+    try:
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        
+        # 이름 및 드라이버 버전
+        name = pynvml.nvmlDeviceGetName(handle)
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        
+        # 메모리 정보 (Byte -> MiB 변환)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        total_mem = mem_info.total / (1024 ** 2)
+        used_mem = mem_info.used / (1024 ** 2)
+        free_mem = mem_info.free / (1024 ** 2)
+        
+        # 사용률 및 온도
+        utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+        
+        # 전력 사용량 (mW -> W 변환)
+        power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+        power_limit = pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
+
+        return {
+            "status_code": 200,
+            "gpu": {
+                "name": name,
+                "driver_version": driver_version,
+                "memory": {
+                    "total_mib": round(total_mem, 2),
+                    "used_mib": round(used_mem, 2),
+                    "free_mib": round(free_mem, 2),
+                    "utilization_percent": mem_info.used / mem_info.total * 100
+                },
+                "utilization": {
+                    "gpu_percent": utilization.gpu,
+                    "memory_percent": utilization.memory
+                },
+                "temperature_c": temp,
+                "power": {
+                    "usage_w": round(power_usage, 2),
+                    "limit_w": round(power_limit, 2)
+                }
+            }
+        }
+    except Exception as e:
+        return {
+            "status_code": 500,
+            "error": str(e),
+            "message": "Failed to fetch GPU stats from NVML"
+        }
 
 def _generate_task(req: GenerateRequest):
     """실제로 GPU에서 모델을 추론하는 동기 함수 (Worker Thread에서 실행됨)"""

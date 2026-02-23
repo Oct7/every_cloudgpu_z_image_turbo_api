@@ -72,6 +72,37 @@ curl -X POST "http://{서버_IP}:8000/generate" \
 curl http://{서버_IP}:8000/status -H "X-API-Key: your-custom-secret-key"
 ```
 
+### 3. GPU 하드웨어 모니터링 (`GET /status/gpu`)
+
+관리자를 위해 실시간 GPU 온도, 메모리 사용량, 전력 소비량 등의 상세 정보를 반환합니다.
+
+```bash
+curl http://{서버_IP}:8000/status/gpu -H "X-API-Key: your-custom-secret-key"
+```
+
+#### 응답 예시 (A100 기준)
+```json
+{
+  "status_code": 200,
+  "gpu": {
+    "name": "NVIDIA A100 80GB PCIe",
+    "temperature_c": 32,
+    "memory": {
+      "total_mib": 81920.0,
+      "used_mib": 24500.0,
+      "utilization_percent": 29.9
+    },
+    "utilization": {
+      "gpu_percent": 45
+    },
+    "power": {
+      "usage_w": 125.5,
+      "limit_w": 300.0
+    }
+  }
+}
+```
+
 ---
 
 ## 💡 주요 특징 및 최적화
