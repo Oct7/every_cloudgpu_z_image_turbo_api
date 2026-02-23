@@ -103,14 +103,22 @@ class GenerateRequest(BaseModel):
 
 @app.get("/status")
 def get_status(api_key: str = Depends(get_api_key)):
+    global available_gpus, pipes, active_requests
     if not pipes:
         return {"status_code": 200, "status": "loading", "active_requests": active_requests}
     
+    idle_count = available_gpus.qsize()
+    
     # 사용 가능한 워커 수 대비 현재 요청 수로 상태 판단
-    if active_requests < len(pipes):
-        return {"status_code": 200, "status": "ready", "active_requests": active_requests, "total_workers": len(pipes)}
-    else:
-        return {"status_code": 200, "status": "busy", "active_requests": active_requests, "total_workers": len(pipes)}
+    status = "ready" if idle_count > 0 else "busy"
+    
+    return {
+        "status_code": 200, 
+        "status": status, 
+        "active_requests": active_requests, 
+        "total_worker_count": len(pipes),
+        "idle_worker_count": idle_count
+    }
 
 @app.get("/status/gpu")
 def get_gpu_status(api_key: str = Depends(get_api_key)):
