@@ -51,7 +51,7 @@ sudo docker build -t z-image-turbo-api .
 # 6. Run Docker container
 echo "Starting Z-Image-Turbo-API container..."
 
-# Check for API_KEY in environment or .env file
+# Check for API_KEY and TARGET_GPU_ID in environment or .env file
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
@@ -59,6 +59,11 @@ fi
 if [ -z "$API_KEY" ]; then
     echo "WARNING: API_KEY is not set. Using default key."
     API_KEY="your-secret-key-1234"
+fi
+
+if [ -z "$TARGET_GPU_ID" ]; then
+    echo "Using default GPU 0 (Change by setting TARGET_GPU_ID in .env)"
+    TARGET_GPU_ID=0
 fi
 
 # Stop and remove existing container if it exists
@@ -71,6 +76,7 @@ sudo docker run -d \
   --restart=always \
   --gpus all \
   -e API_KEY="$API_KEY" \
+  -e TARGET_GPU_ID="$TARGET_GPU_ID" \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=all \
   -p 8000:8000 \

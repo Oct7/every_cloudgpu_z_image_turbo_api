@@ -28,10 +28,10 @@ async def get_api_key(header_value: str = Depends(api_key_header)):
 
 app = FastAPI(title="Z-Image-Turbo API")
 
-# 전역 상태 및 동시 처리 설정 (Worker 수를 1로 하여 순차 처리 = Queue 방식)
+# 전역 상태 및 동시 처리 설정
 pipe = None
+TARGET_GPU_ID = int(os.getenv("TARGET_GPU_ID", "0"))  # 사용할 GPU 인덱스 (기본 0)
 executor = ThreadPoolExecutor(max_workers=1)
-# 글로벌 요청 카운터 유지용
 active_requests = 0
 
 @app.on_event("startup")
@@ -70,9 +70,9 @@ def load_model():
             low_cpu_mem_usage=False,
         )
         
-        # GPU로 모델 이동
-        print("Moving model to CUDA...")
-        pipe.to("cuda")
+        # GPU로 모델 이동 (지정된 TARGET_GPU_ID 사용)
+        print(f"Moving model to CUDA:{TARGET_GPU_ID}...")
+        pipe.to(f"cuda:{TARGET_GPU_ID}")
         
         # 선택사항: Flash Attention이 지원되면 활성화 (A100인 경우 강력 권장)
         try:
@@ -115,68 +115,67 @@ def get_status(api_key: str = Depends(get_api_key)):
 @app.get("/status/gpu")
 def get_gpu_status(api_key: str = Depends(get_api_key)):
     """
-    GPU의 상세 하드웨어 상태(메모리, 온도, 사용률 등)를 반환합니다.
-    관리 및 모니터링 목적으로 사용됩니다.
+    서버에 장착된 모든 GPU의 상세 하드웨어 상태를 리스트로 반환합니다.
     """
     try:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        
-        # 이름 및 드라이버 버전
-        name = pynvml.nvmlDeviceGetName(handle)
-        driver_version = pynvml.nvmlSystemGetDriverVersion()
-        
-        # 메모리 정보 (Byte -> MiB 변환)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        total_mem = mem_info.total / (1024 ** 2)
-        used_mem = mem_info.used / (1024 ** 2)
-        free_mem = mem_info.free / (1024 ** 2)
-        
-        # 사용률 및 온도
-        utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-        
-        # 전력 사용량 (mW -> W 변환)
-        power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
-        power_limit = pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
+        device_count = pynvml.nvmlDeviceGetCount()
+        gpu_list = []
+        active_serving_count = 0
 
-        return {
-            "status_code": 200,
-            "gpu": {
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(handle)
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+            power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+            
+            # 현재 이 API 프로세스가 사용 중인 GPU인지 확인
+            is_active_worker = (i == TARGET_GPU_ID)
+            if is_active_worker:
+                active_serving_count += 1
+
+            gpu_list.append({
+                "index": i,
                 "name": name,
-                "driver_version": driver_version,
+                "is_active_serving": is_active_worker,
                 "memory": {
-                    "total_mib": round(total_mem, 2),
-                    "used_mib": round(used_mem, 2),
-                    "free_mib": round(free_mem, 2),
-                    "utilization_percent": mem_info.used / mem_info.total * 100
+                    "total_mib": round(mem_info.total / (1024**2), 2),
+                    "used_mib": round(mem_info.used / (1024**2), 2),
+                    "utilization_percent": round(mem_info.used / mem_info.total * 100, 1)
                 },
                 "utilization": {
                     "gpu_percent": utilization.gpu,
                     "memory_percent": utilization.memory
                 },
                 "temperature_c": temp,
-                "power": {
-                    "usage_w": round(power_usage, 2),
-                    "limit_w": round(power_limit, 2)
-                }
-            }
+                "power_usage_w": round(power_usage, 2)
+            })
+
+        return {
+            "status_code": 200,
+            "total_gpu_count": device_count,
+            "active_worker_count": active_serving_count,
+            "gpus": gpu_list
         }
     except Exception as e:
         return {
             "status_code": 500,
             "error": str(e),
-            "message": "Failed to fetch GPU stats from NVML"
+            "message": "Failed to fetch multi-GPU stats"
         }
 
 def _generate_task(req: GenerateRequest):
     """실제로 GPU에서 모델을 추론하는 동기 함수 (Worker Thread에서 실행됨)"""
     global pipe
+    device = f"cuda:{TARGET_GPU_ID}"
+    
     if req.seed == -1:
         seed = torch.seed() % (2**32)
-        generator = torch.Generator("cuda").manual_seed(seed)
+        generator = torch.Generator(device).manual_seed(seed)
     else:
         seed = req.seed
-        generator = torch.Generator("cuda").manual_seed(seed)
+        generator = torch.Generator(device).manual_seed(seed)
 
     # 1. 크기 계산: ratio (예: "16:9")와 pixel (백만 픽셀)을 기반으로 최적의 W, H 도출
     try:
