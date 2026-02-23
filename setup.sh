@@ -34,21 +34,35 @@ else
     echo "NVIDIA Container Toolkit is already installed."
 fi
 
-# 4. Build Docker image
+# 4. Check for NVIDIA Driver on Host
+if ! command -v nvidia-smi &> /dev/null; then
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo "ERROR: NVIDIA Driver not found on host machine."
+    echo "Please run: sudo apt-get update && sudo apt-get install -y nvidia-driver-535-server"
+    echo "Then REBOOT your machine before running this script again."
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    exit 1
+fi
+
+# 5. Build Docker image
 echo "Building Z-Image-Turbo-API Docker image..."
 sudo docker build -t z-image-turbo-api .
 
-# 5. Run Docker container
+# 6. Run Docker container
 echo "Starting Z-Image-Turbo-API container..."
 # Stop and remove existing container if it exists
 sudo docker stop z-image-turbo-api-container 2>/dev/null || true
 sudo docker rm z-image-turbo-api-container 2>/dev/null || true
 
 # Run container with GPUs and auto-restart
+# Explicitly set runtime to nvidia just in case
 sudo docker run -d \
   --name z-image-turbo-api-container \
   --restart=always \
+  --runtime=nvidia \
   --gpus all \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
   -p 8000:8000 \
   z-image-turbo-api
 

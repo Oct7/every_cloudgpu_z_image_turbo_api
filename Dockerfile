@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y \
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
+# NVIDIA 환경 변수 추가 (GPU 인식 강화)
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+
 WORKDIR /app
 
 # 2. 파이썬 의존성 복사 및 설치
@@ -28,9 +32,9 @@ RUN pip install --upgrade pip && \
 COPY download_model.py .
 COPY app.py .
 
-# 5. 모델 가중치 미리 다운로드하여 이미지에 포함 (시작 속도 최적화)
-# 주의: 이 과정은 빌드 중 인터넷 연결을 요구하며, 저장 공간을 크게 차지합니다.
-RUN python download_model.py
+# 5. 모델 가중치 미리 다운로드 (용량 문제로 빌드 시점에는 주석 처리)
+# 서버 시작 시(app.py) 자동으로 다운로드되도록 하여 빌드 공간 부족 문제를 해결합니다.
+# RUN python download_model.py
 
 # 6. 포트 노출
 EXPOSE 8000
