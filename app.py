@@ -23,25 +23,46 @@ active_requests = 0
 @app.on_event("startup")
 def load_model():
     global pipe
-    print("Loading Z-Image-Turbo pipeline...")
+    print("Checking CUDA availability...")
     
-    # Official Tongyi-MAI model을 사용하여 모델 로드 
-    # (HuggingFace에서 모델 가중치를 자동으로 받아옵니다)
-    pipe = ZImagePipeline.from_pretrained(
-        "Tongyi-MAI/Z-Image-Turbo",
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=False,
-    )
-    pipe.to("cuda")
+    # 1. GPU 연결 확인 및 상세 정보 출력
+    if not torch.cuda.is_available():
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("ERROR: CUDA is NOT available to PyTorch/torch.cuda.")
+        print(f"Device count: {torch.cuda.device_count()}")
+        print(f"PyTorch version: {torch.__version__}")
+        print("Check if NVIDIA Drivers and Container Toolkit are correctly configured.")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # 즉시 종료하지 않고 로그를 남기기 위해 계속 진행하거나 예외 발생
+        raise RuntimeError("No CUDA GPUs are available for the application.")
+
+    print(f"CUDA is available. Device: {torch.cuda.get_device_name(0)}")
+    print("Loading Z-Image-Turbo pipeline (this may take a few minutes)...")
     
-    # 선택사항: Flash Attention이 지원되면 활성화 (성능 향상)
     try:
-        pipe.transformer.set_attention_backend("flash")
-        print("Flash Attention enabled!")
-    except Exception as e:
-        print("Flash Attention not available, falling back to default.", e)
+        # Official Tongyi-MAI model을 사용하여 모델 로드 
+        pipe = ZImagePipeline.from_pretrained(
+            "Tongyi-MAI/Z-Image-Turbo",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=False,
+        )
         
-    print("Model loaded successfully!")
+        # GPU로 모델 이동
+        print("Moving model to CUDA...")
+        pipe.to("cuda")
+        
+        # 선택사항: Flash Attention이 지원되면 활성화 (A100인 경우 강력 권장)
+        try:
+            # A100은 flash attention을 완벽히 지원합니다.
+            pipe.transformer.set_attention_backend("flash")
+            print("Bright News: Flash Attention enabled successfully!")
+        except Exception as e:
+            print("Flash Attention setup failed, falling back to default.", e)
+            
+        print("Model loaded successfully!")
+    except Exception as e:
+        print(f"Failed to load model: {str(e)}")
+        raise e
 
 class GenerateRequest(BaseModel):
     prompt: str
