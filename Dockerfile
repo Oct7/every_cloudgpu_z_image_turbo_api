@@ -1,18 +1,13 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+# 베이스 이미지를 공식 PyTorch 이미지로 변경 (A100/CUDA 12.4 최적화)
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
-# 1. 시스템 의존성 설치
+# 1. 시스템 의존성 설치 (이미 파이썬은 포함되어 있음)
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
     git \
     wget \
-    make \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
-# NVIDIA 환경 변수 추가 (GPU 인식 강화)
+# NVIDIA 환경 변수 추가
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
