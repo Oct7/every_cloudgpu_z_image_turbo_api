@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import io
@@ -11,6 +12,18 @@ import math
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from diffusers import ZImagePipeline
+
+# 보안 설정: 환경 변수에서 API_KEY를 가져오며, 기본값은 임시로 지정 (배포 시 변경 권장)
+API_KEY = os.getenv("API_KEY", "your-secret-key-1234")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(header_value: str = Depends(api_key_header)):
+    if header_value == API_KEY:
+        return header_value
+    raise HTTPException(
+        status_code=403, detail="Could not validate credentials - Invalid API Key"
+    )
 
 app = FastAPI(title="Z-Image-Turbo API")
 
@@ -74,7 +87,7 @@ class GenerateRequest(BaseModel):
     upload_url: str = None        # 클라이언트가 전달한 S3 Pre-signed URL (선택)
 
 @app.get("/status")
-def get_status():
+def get_status(api_key: str = Depends(get_api_key)):
     """
     현재 API의 상태를 반환합니다.
     status: "ready", "loading", "busy"
@@ -174,7 +187,7 @@ def _generate_task(req: GenerateRequest):
     }
 
 @app.post("/generate")
-async def generate_image(req: GenerateRequest):
+async def generate_image(req: GenerateRequest, api_key: str = Depends(get_api_key)):
     global pipe, active_requests
     if pipe is None:
         raise HTTPException(status_code=503, detail="Model is still loading")

@@ -35,19 +35,19 @@ docker run -d --restart=always --gpus all -p 8000:8000 z-image-turbo-api
 
 서버가 실행된 후, `POST /generate` 엔드포인트에 요청을 보내면 이미지를 생성하여 반환합니다.
 
-### 📍 테스트용 curl 요청 예시
+### 📍 테스트용 curl 요청 예시 (API Key 필요)
+
+서버의 모든 API는 헤더에 `X-API-Key`를 포함해야 작동합니다.
 
 ```bash
 curl -X POST "http://카카오서버공인IP:8000/generate" \
      -H "Content-Type: application/json" \
+     -H "X-API-Key: your-secret-key-1234" \
      -d '{
          "prompt": "Beautiful cinematic lighting photography...",
          "ratio": "16:9",
          "pixel": 1.5,
-         "num_inference_steps": 4,
-         "guidance_scale": 0.0,
-         "seed": -1,
-         "upload_url": "https://company-s3-bucket.s3.ap-northeast-2.amazonaws.com/temp_2026.png?AWSAccessKeyId=AKIA...&Expires=..."
+         "seed": 42
      }'
 ```
 
